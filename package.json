@@ -5,8 +5,11 @@
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build",
+    "build:prod": "ng build --configuration production --base-href /traffic-rl/",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "predeploy": "npm run build:prod",
+    "deploy": "gh-pages -d dist/angular-rl-traffic-master"
   },
   "private": true,
   "dependencies": {
@@ -33,6 +36,7 @@
     "@angular/cli": "^20.0.0",
     "@angular/compiler-cli": "^20.0.0",
     "@types/jasmine": "~5.1.0",
+    "gh-pages": "^6.3.0",
     "jasmine-core": "~5.7.0",
     "karma": "~6.4.0",
     "karma-chrome-launcher": "~3.2.0",

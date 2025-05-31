@@ -142,8 +142,9 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
   private animationId: number | null = null;
   private readonly demoState = {
     phase: TrafficPhase.NS_GREEN,
-    queues: [0, 0, 0, 0] as [number, number, number, number],
-    time: 0
+    queues: [2, 1.5, 2.5, 1.8] as [number, number, number, number],
+    time: 0,
+    initialized: false
   };
 
   pages: DocumentationPage[] = [
@@ -202,54 +203,69 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
   }
 
   ngOnInit(): void {
-    // Don't start visualization immediately - wait for modal to open
+    // Initialize demo state
+    this.resetDemoState();
   }
 
   ngAfterViewInit(): void {
-    if (this.canvasRef?.nativeElement) {
-      const canvas = this.canvasRef.nativeElement;
-      this.ctx = canvas.getContext('2d');
-      if (this.isOpen) {
-        this.startVisualization();
-      }
-    }
+    this.initializeCanvas();
   }
 
   ngOnChanges(changes: any): void {
-    // Start visualization when modal opens
     if (changes.isOpen?.currentValue && !changes.isOpen?.previousValue) {
       console.log('Modal opened, starting visualization...');
+      // Small delay to ensure DOM is ready
       setTimeout(() => {
-        if (this.canvasRef?.nativeElement) {
-          const canvas = this.canvasRef.nativeElement;
-          this.ctx = canvas.getContext('2d');
-          console.log('Canvas context obtained:', this.ctx);
-          this.startVisualization();
-        }
-      }, 50); // Give the DOM time to render
+        this.initializeCanvas();
+        this.startVisualization();
+      }, 100);
     }
     
-    // Stop visualization when modal closes
     if (changes.isOpen && !changes.isOpen.currentValue && this.animationId) {
       console.log('Modal closed, stopping visualization...');
-      cancelAnimationFrame(this.animationId);
-      this.animationId = null;
+      this.stopVisualization();
     }
   }
 
   ngOnDestroy(): void {
-    // Cleanup animation frame on destroy
-    if (this.animationId) {
-      cancelAnimationFrame(this.animationId);
-      this.animationId = null;
+    this.stopVisualization();
+  }
+
+  private initializeCanvas(): void {
+    if (!this.canvasRef?.nativeElement) {
+      console.warn('Canvas not available');
+      return;
     }
+
+    const canvas = this.canvasRef.nativeElement;
+    this.ctx = canvas.getContext('2d');
+    
+    if (!this.ctx) {
+      console.error('Failed to get canvas context');
+      return;
+    }
+
+    // Set canvas properties for crisp rendering
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    
+    this.ctx.scale(dpr, dpr);
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+
+    console.log('Canvas initialized:', canvas.width, 'x', canvas.height);
+    this.demoState.initialized = true;
   }
 
   nextPage(): void {
-    console.log('Next page clicked. Current index:', this.currentPageIndex, 'Total pages:', this.pages.length);
+    console.log('Next page clicked. Current index:', this.currentPageIndex);
     if (this.currentPageIndex < this.pages.length - 1) {
       this.currentPageIndex++;
-      console.log('New page index:', this.currentPageIndex);
+      console.log('Moving to page:', this.currentPageIndex + 1);
+      this.resetDemoState();
       this.updateVisualization();
     }
   }
@@ -258,7 +274,8 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
     console.log('Previous page clicked. Current index:', this.currentPageIndex);
     if (this.currentPageIndex > 0) {
       this.currentPageIndex--;
-      console.log('New page index:', this.currentPageIndex);
+      console.log('Moving to page:', this.currentPageIndex + 1);
+      this.resetDemoState();
       this.updateVisualization();
     }
   }
@@ -271,26 +288,33 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
     this.close();
   }
 
+  private resetDemoState(): void {
+    this.demoState.time = 0;
+    this.demoState.phase = TrafficPhase.NS_GREEN;
+    this.demoState.queues = [2, 1.5, 2.5, 1.8];
+  }
+
   private startVisualization(): void {
-    console.log('Starting visualization with context:', this.ctx);
-    if (!this.ctx) {
-      console.error('No canvas context available');
+    if (!this.ctx || !this.demoState.initialized) {
+      console.warn('Cannot start visualization - canvas not ready');
       return;
     }
     
-    this.demoState.time = 0;
-    this.updateVisualization();
-    
-    // Force an immediate draw to show something right away
-    this.drawVisualization();
-    console.log('Initial draw completed');
-    
-    // Start the animation loop
+    console.log('Starting visualization for page:', this.currentPageIndex + 1);
+    this.stopVisualization(); // Stop any existing animation
+    this.resetDemoState();
     this.animateDemo();
   }
 
+  private stopVisualization(): void {
+    if (this.animationId) {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+  }
+
   private animateDemo(): void {
-    if (!this.ctx) return;
+    if (!this.ctx || !this.demoState.initialized) return;
     
     this.demoState.time += 0.05;
     
@@ -314,100 +338,99 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
   }
 
   private animateOverview(): void {
-    // Simple animation showing all directions with gentle queue changes
     const baseQueues = [2, 1.5, 2.5, 1.8];
-    this.demoState.queues = baseQueues.map(base => 
-      Math.max(0, base + Math.sin(this.demoState.time + Math.random()) * 0.5)
+    this.demoState.queues = baseQueues.map((base, i) => 
+      Math.max(0.5, base + Math.sin(this.demoState.time * 0.5 + i) * 0.8)
     ) as [number, number, number, number];
     
-    // Alternate phases every 3 seconds
-    this.demoState.phase = Math.floor(this.demoState.time / 3) % 2 === 0 
+    this.demoState.phase = Math.floor(this.demoState.time / 4) % 2 === 0 
       ? TrafficPhase.NS_GREEN 
       : TrafficPhase.EW_GREEN;
   }
 
   private animateRLDemo(): void {
-    // Simulate intelligent behavior - switch to direction with more traffic
+    // Simulate intelligent behavior - adapt to traffic
+    const time = this.demoState.time;
+    
+    // Create dynamic queue patterns
+    this.demoState.queues[0] = Math.max(0.5, 3 + Math.sin(time * 0.3) * 1.5);
+    this.demoState.queues[1] = Math.max(0.5, 1.5 + Math.sin(time * 0.5) * 1);
+    this.demoState.queues[2] = Math.max(0.5, 2 + Math.sin(time * 0.4) * 1.2);
+    this.demoState.queues[3] = Math.max(0.5, 3.5 + Math.sin(time * 0.6) * 2);
+    
+    // Intelligent switching based on queue lengths
     const nsTotal = this.demoState.queues[0] + this.demoState.queues[2];
     const ewTotal = this.demoState.queues[1] + this.demoState.queues[3];
     
-    // Add some randomness to queues
-    this.demoState.queues[0] = Math.max(0, 3 + Math.sin(this.demoState.time * 0.5) * 1.5);
-    this.demoState.queues[1] = Math.max(0, 1 + Math.sin(this.demoState.time * 0.3) * 1);
-    this.demoState.queues[2] = Math.max(0, 2 + Math.sin(this.demoState.time * 0.7) * 1);
-    this.demoState.queues[3] = Math.max(0, 4 + Math.sin(this.demoState.time * 0.4) * 2);
-    
-    // Intelligent phase switching based on queue lengths
-    this.demoState.phase = ewTotal > nsTotal ? TrafficPhase.EW_GREEN : TrafficPhase.NS_GREEN;
+    // Switch every 3-5 seconds, but prefer direction with more traffic
+    const shouldSwitch = Math.floor(time / 4) % 2;
+    if (shouldSwitch === 0) {
+      this.demoState.phase = ewTotal > nsTotal ? TrafficPhase.EW_GREEN : TrafficPhase.NS_GREEN;
+    } else {
+      this.demoState.phase = nsTotal > ewTotal ? TrafficPhase.NS_GREEN : TrafficPhase.EW_GREEN;
+    }
   }
 
   private animateBaselineDemo(): void {
-    // Fixed 30-second cycles regardless of traffic
-    this.demoState.phase = Math.floor(this.demoState.time / 3) % 2 === 0 
+    // Fixed timing - exactly every 4 seconds regardless of traffic
+    this.demoState.phase = Math.floor(this.demoState.time / 4) % 2 === 0 
       ? TrafficPhase.NS_GREEN 
       : TrafficPhase.EW_GREEN;
     
-    // Show how queues can build up during wrong phase
-    const cycleTime = this.demoState.time % 6;
-    if (cycleTime < 3) {
-      // NS Green - EW queues build up
-      this.demoState.queues[0] = 1;
-      this.demoState.queues[2] = 1;
-      this.demoState.queues[1] = Math.min(5, cycleTime * 1.5);
-      this.demoState.queues[3] = Math.min(4, cycleTime * 1.2);
+    // Show queues building up during wrong phase
+    const cycleTime = this.demoState.time % 8;
+    const halfCycle = cycleTime % 4;
+    
+    if (this.demoState.phase === TrafficPhase.NS_GREEN) {
+      // NS flowing, EW building up
+      this.demoState.queues[0] = Math.max(0.5, 1 + Math.sin(halfCycle) * 0.5);
+      this.demoState.queues[2] = Math.max(0.5, 1 + Math.sin(halfCycle) * 0.5);
+      this.demoState.queues[1] = Math.min(6, 1 + halfCycle * 0.8);
+      this.demoState.queues[3] = Math.min(5, 1 + halfCycle * 0.7);
     } else {
-      // EW Green - NS queues build up
-      this.demoState.queues[1] = 1;
-      this.demoState.queues[3] = 1;
-      this.demoState.queues[0] = Math.min(5, (cycleTime - 3) * 1.5);
-      this.demoState.queues[2] = Math.min(4, (cycleTime - 3) * 1.2);
+      // EW flowing, NS building up
+      this.demoState.queues[1] = Math.max(0.5, 1 + Math.sin(halfCycle) * 0.5);
+      this.demoState.queues[3] = Math.max(0.5, 1 + Math.sin(halfCycle) * 0.5);
+      this.demoState.queues[0] = Math.min(6, 1 + halfCycle * 0.8);
+      this.demoState.queues[2] = Math.min(5, 1 + halfCycle * 0.7);
     }
   }
 
   private animateComparisonDemo(): void {
-    // Show both systems side by side with metrics
-    const cycleTime = this.demoState.time % 8;
+    // Show side-by-side comparison effect
+    const cycleTime = this.demoState.time % 10;
     
-    if (cycleTime < 4) {
+    if (cycleTime < 5) {
       this.demoState.phase = TrafficPhase.NS_GREEN;
-      this.demoState.queues = [1, 3, 1, 2.5];
+      this.demoState.queues = [1.5, 3.5, 1.2, 4.0];
     } else {
       this.demoState.phase = TrafficPhase.EW_GREEN;
-      this.demoState.queues = [2, 1, 1.5, 1];
+      this.demoState.queues = [3.0, 1.5, 2.8, 1.0];
     }
   }
 
   private updateVisualization(): void {
-    this.demoState.time = 0; // Reset animation for new page
+    this.resetDemoState();
+    if (this.ctx && this.demoState.initialized) {
+      this.drawVisualization();
+    }
   }
 
   private drawVisualization(): void {
-    if (!this.ctx) {
-      console.log('Cannot draw - no context');
-      return;
-    }
+    if (!this.ctx) return;
 
-    const canvas = this.canvasRef.nativeElement;
-    const width = canvas.width;
-    const height = canvas.height;
+    const width = 300; // Use logical pixels
+    const height = 300;
     
-    console.log('Drawing on canvas:', width, 'x', height);
-    
-    // Clear canvas with a visible background first
+    // Clear canvas
     this.ctx.fillStyle = '#f8fafc';
     this.ctx.fillRect(0, 0, width, height);
-    
-    // Draw a test rectangle to verify canvas is working
-    this.ctx.fillStyle = '#ff0000';
-    this.ctx.fillRect(10, 10, 50, 50);
     
     // Draw intersection
     this.drawDemoIntersection(width, height);
     
     // Add page-specific overlays
     this.drawPageSpecificOverlay(width, height);
-    
-    console.log('Draw visualization completed');
   }
 
   private drawDemoIntersection(width: number, height: number): void {
@@ -415,17 +438,17 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
     
     const centerX = width / 2;
     const centerY = height / 2;
-    const roadWidth = 60;
+    const roadWidth = 80;
     
     // Draw roads
     this.ctx.fillStyle = '#6b7280';
     this.ctx.fillRect(0, centerY - roadWidth / 2, width, roadWidth);
     this.ctx.fillRect(centerX - roadWidth / 2, 0, roadWidth, height);
     
-    // Draw center markings
+    // Draw lane markings
     this.ctx.strokeStyle = '#ffffff';
-    this.ctx.lineWidth = 1;
-    this.ctx.setLineDash([10, 5]);
+    this.ctx.lineWidth = 2;
+    this.ctx.setLineDash([15, 10]);
     
     this.ctx.beginPath();
     this.ctx.moveTo(0, centerY);
@@ -446,11 +469,11 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
     this.drawDemoVehicleQueues(width, height);
     
     // Draw intersection center
-    this.ctx.fillStyle = '#f3f4f6';
-    this.ctx.fillRect(centerX - 25, centerY - 25, 50, 50);
-    this.ctx.strokeStyle = '#d1d5db';
-    this.ctx.lineWidth = 1;
-    this.ctx.strokeRect(centerX - 25, centerY - 25, 50, 50);
+    this.ctx.fillStyle = '#e5e7eb';
+    this.ctx.fillRect(centerX - 30, centerY - 30, 60, 60);
+    this.ctx.strokeStyle = '#9ca3af';
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(centerX - 30, centerY - 30, 60, 60);
   }
 
   private drawDemoTrafficLights(width: number, height: number): void {
@@ -458,8 +481,8 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
     
     const centerX = width / 2;
     const centerY = height / 2;
-    const lightSize = 12;
-    const offset = 50;
+    const lightSize = 16;
+    const offset = 65;
     
     const lights = [
       { x: centerX, y: centerY - offset, direction: 'north' },
@@ -471,7 +494,7 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
     lights.forEach(light => {
       const isGreen = this.isDirectionGreen(light.direction);
       
-      // Light background
+      // Light housing
       this.ctx!.fillStyle = '#374151';
       this.ctx!.fillRect(light.x - lightSize / 2, light.y - lightSize / 2, lightSize, lightSize);
       
@@ -480,6 +503,14 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
       this.ctx!.beginPath();
       this.ctx!.arc(light.x, light.y, lightSize / 3, 0, 2 * Math.PI);
       this.ctx!.fill();
+      
+      // Light glow effect
+      if (isGreen) {
+        this.ctx!.fillStyle = 'rgba(16, 185, 129, 0.3)';
+        this.ctx!.beginPath();
+        this.ctx!.arc(light.x, light.y, lightSize / 2, 0, 2 * Math.PI);
+        this.ctx!.fill();
+      }
     });
   }
 
@@ -488,24 +519,37 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
     
     const centerX = width / 2;
     const centerY = height / 2;
-    const vehicleSize = 4;
-    const spacing = 6;
+    const vehicleSize = 6;
+    const spacing = 8;
     
     const directions = [
-      { queue: this.demoState.queues[0], startX: centerX - 8, startY: centerY - 60, dx: 0, dy: -spacing },
-      { queue: this.demoState.queues[1], startX: centerX + 60, startY: centerY - 8, dx: spacing, dy: 0 },
-      { queue: this.demoState.queues[2], startX: centerX + 8, startY: centerY + 60, dx: 0, dy: spacing },
-      { queue: this.demoState.queues[3], startX: centerX - 60, startY: centerY + 8, dx: -spacing, dy: 0 }
+      { queue: this.demoState.queues[0], startX: centerX - 12, startY: centerY - 80, dx: 0, dy: -spacing, color: '#ef4444' },
+      { queue: this.demoState.queues[1], startX: centerX + 80, startY: centerY - 12, dx: spacing, dy: 0, color: '#3b82f6' },
+      { queue: this.demoState.queues[2], startX: centerX + 12, startY: centerY + 80, dx: 0, dy: spacing, color: '#10b981' },
+      { queue: this.demoState.queues[3], startX: centerX - 80, startY: centerY + 12, dx: -spacing, dy: 0, color: '#f59e0b' }
     ];
     
     directions.forEach(dir => {
-      for (let i = 0; i < Math.min(Math.floor(dir.queue), 8); i++) {
+      const queueLength = Math.min(Math.floor(dir.queue), 10);
+      for (let i = 0; i < queueLength; i++) {
         const x = dir.startX + dir.dx * i;
         const y = dir.startY + dir.dy * i;
         
-        this.ctx!.fillStyle = '#3b82f6';
+        // Vehicle body
+        this.ctx!.fillStyle = dir.color;
         this.ctx!.fillRect(x - vehicleSize / 2, y - vehicleSize / 2, vehicleSize, vehicleSize);
+        
+        // Vehicle outline
+        this.ctx!.strokeStyle = '#1f2937';
+        this.ctx!.lineWidth = 1;
+        this.ctx!.strokeRect(x - vehicleSize / 2, y - vehicleSize / 2, vehicleSize, vehicleSize);
       }
+      
+      // Queue length text
+      this.ctx!.fillStyle = '#374151';
+      this.ctx!.font = '12px Arial';
+      this.ctx!.textAlign = 'center';
+      this.ctx!.fillText(dir.queue.toFixed(1), dir.startX, dir.startY - 15);
     });
   }
 
@@ -522,55 +566,77 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
       case 'comparison':
         this.drawComparisonOverlay(width, height);
         break;
+      case 'overview':
+        this.drawOverviewOverlay(width, height);
+        break;
     }
+  }
+
+  private drawOverviewOverlay(width: number, height: number): void {
+    if (!this.ctx) return;
+    
+    this.ctx.fillStyle = '#3b82f6';
+    this.ctx.font = 'bold 14px Arial';
+    this.ctx.textAlign = 'center';
+    this.ctx.fillText('🚦 4-Way Intersection', width / 2, 25);
   }
 
   private drawRLOverlay(width: number, height: number): void {
     if (!this.ctx) return;
     
-    // Draw "AI thinking" indicator
+    // AI thinking indicator
     this.ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
-    this.ctx.fillRect(0, 0, width, height);
+    this.ctx.fillRect(5, 5, width - 10, 30);
     
-    // Brain icon or AI indicator
     this.ctx.fillStyle = '#3b82f6';
-    this.ctx.font = '12px Arial';
+    this.ctx.font = 'bold 12px Arial';
     this.ctx.textAlign = 'center';
-    this.ctx.fillText('🧠 AI Deciding', width / 2, 20);
+    this.ctx.fillText('🧠 AI Learning & Adapting', width / 2, 22);
+    
+    // Show decision making
+    this.ctx.font = '10px Arial';
+    this.ctx.fillText(`Decision: ${this.demoState.phase === TrafficPhase.NS_GREEN ? 'NS Green' : 'EW Green'}`, width / 2, width - 10);
   }
 
   private drawBaselineOverlay(width: number, height: number): void {
     if (!this.ctx) return;
     
-    // Draw timer indicator
-    const cycleTime = this.demoState.time % 6;
-    const progress = (cycleTime % 3) / 3;
+    // Timer visualization
+    const cycleTime = this.demoState.time % 8;
+    const progress = (cycleTime % 4) / 4;
+    
+    // Timer background
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    this.ctx.fillRect(10, 10, width - 20, 25);
     
     // Timer bar
     this.ctx.fillStyle = '#ef4444';
-    this.ctx.fillRect(10, 10, 100 * progress, 8);
-    this.ctx.strokeStyle = '#374151';
-    this.ctx.strokeRect(10, 10, 100, 8);
+    this.ctx.fillRect(15, 15, (width - 30) * progress, 15);
     
-    this.ctx.fillStyle = '#374151';
-    this.ctx.font = '10px Arial';
-    this.ctx.textAlign = 'left';
-    this.ctx.fillText('Fixed Timer', 10, 30);
+    // Timer text
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.font = 'bold 10px Arial';
+    this.ctx.textAlign = 'center';
+    this.ctx.fillText('⏱️ Fixed 4s Timer', width / 2, 26);
   }
 
   private drawComparisonOverlay(width: number, height: number): void {
     if (!this.ctx) return;
     
-    // Draw comparison metrics
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    this.ctx.fillRect(10, height - 60, width - 20, 50);
+    // Metrics overlay
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    this.ctx.fillRect(10, height - 50, width - 20, 40);
+    
+    const totalQueue = this.demoState.queues.reduce((a, b) => a + b, 0);
+    const rlScore = Math.floor(totalQueue * 0.7); // RL performs better
+    const baselineScore = Math.floor(totalQueue);
     
     this.ctx.fillStyle = '#ffffff';
     this.ctx.font = '10px Arial';
     this.ctx.textAlign = 'left';
-    this.ctx.fillText('RL Reward: -' + Math.floor(this.demoState.queues.reduce((a, b) => a + b, 0) * 0.8), 15, height - 40);
-    this.ctx.fillText('Baseline Reward: -' + Math.floor(this.demoState.queues.reduce((a, b) => a + b, 0)), 15, height - 25);
-    this.ctx.fillText('Total Queue: ' + Math.floor(this.demoState.queues.reduce((a, b) => a + b, 0)), 15, height - 10);
+    this.ctx.fillText(`🧠 RL Score: -${rlScore}`, 15, height - 35);
+    this.ctx.fillText(`⏱️ Baseline: -${baselineScore}`, 15, height - 20);
+    this.ctx.fillText(`Total Queue: ${totalQueue.toFixed(1)}`, 15, height - 5);
   }
 
   private isDirectionGreen(direction: string): boolean {
@@ -595,7 +661,7 @@ export class DocumentationModalComponent implements OnInit, AfterViewInit, OnCha
       case 'comparison':
         return 'Performance Comparison';
       default:
-        return 'Traffic Intersection';
+        return 'Traffic Overview';
     }
   }
 }
