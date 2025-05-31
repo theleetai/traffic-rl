@@ -9,7 +9,7 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "predeploy": "npm run build:prod",
-    "deploy": "gh-pages -d dist/angular-rl-traffic-master"
+    "deploy": "gh-pages -d dist/angular-rl-traffic-master/browser"
   },
   "private": true,
   "dependencies": {
